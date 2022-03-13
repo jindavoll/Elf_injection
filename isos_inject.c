@@ -106,12 +106,13 @@ Elf * getElf(char * path_to_file) {
 
   return elf;
 }
+  
 /* take an elf and return an executable header of this elf if that's a 64bit-executable */
 Elf64_Ehdr * get_64Ehdr(Elf *elf) {
   /* get the 64 bytes executable header */ 
   Elf64_Ehdr *ehdr = elf64_getehdr(elf);
   if (ehdr == NULL)
-    err(EXIT_FAILURE, "couldn't get the 64bytes executable header : %s", elf_errmsg(elf_errno()));
+    err(EXIT_FAILURE, "couldn't get the 64bytes executable header error : %s", elf_errmsg(elf_errno()));
   /* to check if it's 32 or 64 we can check the EI_class of the e_ident cf CM2 Mohamed website 
      0 if for invalid class, 1 = 32-bit object and 2 = 64-bit object */
   if (ehdr->e_ident[4] != 2) 
@@ -119,7 +120,13 @@ Elf64_Ehdr * get_64Ehdr(Elf *elf) {
   return ehdr;
 }
 
+
+/* --- main --- */
 int main(int argc, char **argv) {
+  /* declaration of variables */
+  size_t numb_pgheader;
+  int index_ptnote = -1;
+
   /* task1 */
 	struct arguments arguments;
 	arguments.read_elf = NULL;
@@ -130,14 +137,35 @@ int main(int argc, char **argv) {
 
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
   args_check(&arguments);
-
-  printf("read_elf %s\n", arguments.read_elf);
   
   Elf *elf = getElf(arguments.read_elf);
 	Elf64_Ehdr *ehdr = get_64Ehdr(elf);
   printf("executable %d\n", ehdr->e_ident[4]);
-  
+
+  /* Task 2 check the number of program headers that the binary contains */
+  if (elf_getphdrnum(elf, &numb_pgheader) != 0)
+    err(EXIT_FAILURE, "error getting the number of program header error : %s", elf_errmsg(elf_errno()));
+  printf("number of program header %lu\n", numb_pgheader);
+
+
+  printf("offset of first program header %ld\n", ehdr->e_phoff);
+  /* */
+  Elf64_Phdr *phdr = elf64_getphdr(elf);
+  if (phdr == NULL)
+    err(EXIT_FAILURE, "couldn't get the program headers error : %s", elf_errmsg(elf_errno()));
+
+  for (size_t i = 0; i < numb_pgheader; i++) {
+    if (phdr[i].p_type == PT_NOTE && index_ptnote == -1)
+      index_ptnote = i; 
+  }
+
+  if (index_ptnote == -1) 
+    err(EXIT_FAILURE, "couldn't get any index of PT_NOTE");
+
+  printf("index %d\n", index_ptnote);
 
 	printf("good\n");
   elf_end(elf);
+
+  return 0;
 }
