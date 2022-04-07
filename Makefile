@@ -31,4 +31,4 @@ valgrind: isos_inject codeInjection
 	valgrind ./isos_inject -r date -b codeInjection -c nouveauNom -a 6300000
 
 clean:
-	rm -f *~ *.o isos_inject codeInjection
+	rm -f *~ *.o isos_inject codeInjection a.out
