@@ -426,14 +426,14 @@ void hijack(struct arguments *arguments, struct inject_bin *inject) {
     
     size_t offset = shdr_plt->sh_offset + add_getenv_in_gotplt;
 
-    int error = fseek(inject->fd_read, offset, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
+    int error = fseek(inject->fd_read, offset, SEEK_SET);
       if (error == -1)
         err(EXIT_FAILURE, "fseek failed : error %d", errno);
 
     /* writing */
-    fwrite(&arguments->address, 1, sizeof(unsigned long), inject->fd_read); /* ATTENTION dois-je mettre le '.' pour '.nouveauNom ???  sur le fwrite */
-      if (ferror(inject->fd_read) != 0) 
-        err(EXIT_FAILURE, "error when trying to rewrite the GOT entry in the .got.plt section %d", errno);
+    fwrite(&arguments->address, 1, sizeof(unsigned long), inject->fd_read);
+    if (ferror(inject->fd_read) != 0) 
+      err(EXIT_FAILURE, "error when trying to rewrite the GOT entry in the .got.plt section %d", errno);
   }
 }
 
@@ -443,6 +443,8 @@ int main(int argc, char **argv) {
   /* declaration of variables */
   struct inject_bin inject;
   inject.index_ptnote = -1;
+  inject.numb_pgheader = 0;
+  inject.fd_read = NULL;
 
   /* task1 */
   printf("\n\n-----------------------------------\n");
@@ -543,7 +545,7 @@ int main(int argc, char **argv) {
     hijack(&arguments, &inject);
   }
 
-  printf("after rewrite %ld\n", inject.ehdr->e_entry);
+  printf("\nafter rewrite %ld\n", inject.ehdr->e_entry);
 
 
   fclose(fd_read);

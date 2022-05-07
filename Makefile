@@ -5,6 +5,8 @@ all : copy isos_inject codeInjection clang backup
 #test and testEntry to run the program
 #warnings to test every warnings
 #clang-tidy to run with clang-tidy
+#if you want to run with -e don't forget to use codeInjectionEntry else use codeInjection
+#With sanitization address and memory error on entry got modification (without -e) but problem that are not fixable cf clang known issues
 
 copy : 
 	rm date
