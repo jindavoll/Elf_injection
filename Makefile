@@ -42,12 +42,14 @@ clangSanitizationUndefined: isos_inject.c
 #check all the warnings without clang-tidy and without gcc but run test or testEntry to test gcc
 warnings: clangSanitizationUndefined clangSanitizationMemory clangSanitizationAddress analyze clang
 
-testEntry: isos_inject codeInjectionEntry #Test with modifying entry point
+#Test with modifying entry point
+testEntry: isos_inject codeInjectionEntry 
 	rm date
 	cp backup/date .
 	./isos_inject -r date -b codeInjectionEntry -c nouveauNom -a 6300000 -e
 
-test: isos_inject codeInjection #Test with got entry only
+#Test with got entry only
+test: isos_inject codeInjection 
 	rm date
 	cp backup/date .
 	./isos_inject -r date -b codeInjection -c nouveauNom -a 6300000
