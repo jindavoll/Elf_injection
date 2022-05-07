@@ -34,7 +34,11 @@ main1:
 	pop rcx
 	pop rax
 
-	ret
+	;return 
+	;ret
+
+	mov rax, 0x4022e0
+	jmp rax
 
 callback:
 	pop rsi

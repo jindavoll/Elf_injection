@@ -43,6 +43,8 @@ struct inject_bin {
   Elf *elf;
   Elf64_Ehdr *ehdr;
 
+  /* elf file descriptor*/
+  FILE *fd_read;
 };
 
 /* options used to parse the arguments */
@@ -126,7 +128,6 @@ Elf * getElf(int fd) {
   if (elf == NULL)
     err(EXIT_FAILURE, "elf file is not readable, error : %s\n", elf_errmsg(elf_errno()));
 
-  //never close fd ? must i ?
   return elf;
 }
   
@@ -181,13 +182,6 @@ void inject_to_end(struct arguments *arguments, struct inject_bin *inject) {
   if (ferror(fd_read) != 0) 
     err(EXIT_FAILURE, "error when trying to append to the elf binary %d", errno);
 
-
-  /*error = fseek(fd_read, 0L, SEEK_END); //CHECK NEW SIZE OF DATE and update it 
-    if (error == -1)
-      err(EXIT_FAILURE, "fseek failed : error %d", errno);
-    inject->elf_size = ftell(fd_read);
-    printf("date after append %ld\n", inject->elf_size);*/
-
   /* free */
   fclose(fd_read);
   fclose(fd_injected);
@@ -203,17 +197,12 @@ void inject_to_end(struct arguments *arguments, struct inject_bin *inject) {
 
 
 /* TASK5 reordering section header after modifying ABItag*/
-void reorder(struct arguments *arguments, struct inject_bin *inject, Elf64_Shdr **tab) {
-  /* TASK 5 REORDER */
-  /*printf("TEST REODER \n");
-  for (size_t i = 1; i < inject->index_shstrtab; i++){
-    printf("nom reorder1 %s, adress %ld\n", elf_strptr(inject->elf, inject->index_shstrtab, tab[i]->sh_name), tab[i]->sh_addr);
-  }*/
+void reorder(struct inject_bin *inject, Elf64_Shdr **tab) {
 
   /* reorder function */
   bool swap = false;
 
-  /* si swap a gauche */
+  /* if swap then left */
   size_t index_off_abitag = inject->index_abitag - 1;
   size_t index_shstrtab = inject->index_shstrtab; /* -1 because the tab start from 0 and the first index of the date elf doesn't have a string name so it's not copied */
   if (index_shstrtab != 0 && index_off_abitag != 0 && tab[index_off_abitag - 1]->sh_addr > tab[index_off_abitag]->sh_addr) {
@@ -226,7 +215,7 @@ void reorder(struct arguments *arguments, struct inject_bin *inject, Elf64_Shdr 
       }
       if (tab[i]->sh_link != 0)
           tab[i]->sh_link++; //j'augmente ou décrémente puisque index pointer différent...
-    } /* sinon droite */
+    } /* else right */
   } else if (index_shstrtab != 0 && index_off_abitag != 0 && tab[index_off_abitag + 1]->sh_addr < tab[index_off_abitag]->sh_addr){
     for (size_t i = index_off_abitag; i < index_shstrtab - 1; i++) {
       swap = true;
@@ -239,28 +228,21 @@ void reorder(struct arguments *arguments, struct inject_bin *inject, Elf64_Shdr 
           tab[i]->sh_link--;
     }
   }
-  /* swap a faire ?? sinon rien à faire déjà ordonnée */
+  /* swap true if section have been moved else already ordered */
   if (swap) {
-
-    /* open the file to be overwrite */
-    FILE *fd_read = fopen(arguments->read_elf, "r+");
-    if (fd_read == NULL) 
-      err(EXIT_FAILURE, "file descriptor failed : error %d", errno);
 
     /* seek to the file descriptor offset in the elf file to overwrite */
 
     for (size_t i = 0; i < index_shstrtab; i++) {
 
-      int error = fseek(fd_read, (inject->ehdr->e_shoff + ((i + 1) * inject->ehdr->e_shentsize)), SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
+      int error = fseek(inject->fd_read, (inject->ehdr->e_shoff + ((i + 1) * inject->ehdr->e_shentsize)), SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
       if (error == -1)
         err(EXIT_FAILURE, "fseek failed : error %d", errno);
       
-      fwrite(tab[i], 1, inject->ehdr->e_shentsize, fd_read);
-      if (ferror(fd_read) != 0) 
+      fwrite(tab[i], 1, inject->ehdr->e_shentsize, inject->fd_read);
+      if (ferror(inject->fd_read) != 0) 
         err(EXIT_FAILURE, "error when trying to rewrite the section to the elf binary %d", errno);
     }
-
-    fclose(fd_read);  
   }
 }
 
@@ -327,7 +309,7 @@ void overwrite_section_header(struct arguments *arguments, struct inject_bin *in
     index++;
   }
   /* call to reorder task 5 */
-  reorder(arguments, inject, tab); 
+  reorder(inject, tab); 
   free(tab); 
 }
 
@@ -357,14 +339,10 @@ void set_name_section(struct arguments *arguments, struct inject_bin *inject) {
   size_t file_offset_to_rewrite = offset_shstrtab + offset_in_shstrtab_abitag;
 
   /* REWRITE */
-  /* open the file to be overwrite */
-  FILE *fd_read = fopen(arguments->read_elf, "r+");
-  if (fd_read == NULL) 
-    err(EXIT_FAILURE, "file descriptor failed : error %d", errno);
   
-  int error = fseek(fd_read, file_offset_to_rewrite, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
-    if (error == -1)
-      err(EXIT_FAILURE, "fseek failed : error %d", errno);
+  int error = fseek(inject->fd_read, file_offset_to_rewrite, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
+  if (error == -1)
+    err(EXIT_FAILURE, "fseek failed : error %d", errno);
 
   for (size_t i = strlen(arguments->section_name); i < strlen(".note.ABI-tag"); i++) {
     arguments->section_name[i] = '\0';
@@ -372,11 +350,9 @@ void set_name_section(struct arguments *arguments, struct inject_bin *inject) {
 
   printf("new name = %s\n", arguments->section_name);
 
-  fwrite(arguments->section_name, 1, strlen(".note.ABI-tag"), fd_read);
-    if (ferror(fd_read) != 0) 
-      err(EXIT_FAILURE, "error when trying to rewrite the shstrtab section to the elf binary %d", errno);
-
-  fclose(fd_read);
+  fwrite(arguments->section_name, 1, strlen(".note.ABI-tag"), inject->fd_read);
+  if (ferror(inject->fd_read) != 0) 
+    err(EXIT_FAILURE, "error when trying to rewrite the shstrtab section to the elf binary %d", errno);
 }
 
 
@@ -390,10 +366,6 @@ void overwrite_program_header(struct arguments *arguments, struct inject_bin *in
   inject->phdr[inject->index_ptnote].p_memsz = inject->injected_size;
   inject->phdr[inject->index_ptnote].p_flags = PF_X | PF_R;
   inject->phdr[inject->index_ptnote].p_align = PAGE_SIZE;
-
-  FILE *fd_read = fopen(arguments->read_elf, "r+");
-  if (fd_read == NULL) 
-    err(EXIT_FAILURE, "file descriptor failed : error %d", errno);
   
   /* size where i have to write the PT_NOTE in the binary */
   size_t offset = inject->ehdr->e_phoff + (inject->index_ptnote * inject->ehdr->e_phentsize);
@@ -401,40 +373,71 @@ void overwrite_program_header(struct arguments *arguments, struct inject_bin *in
   printf("index %u \n", inject->index_ptnote);
   printf("offset %zu\n", offset);
 
-  int error = fseek(fd_read, offset, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
-    if (error == -1)
-      err(EXIT_FAILURE, "fseek failed : error %d", errno);
+  int error = fseek(inject->fd_read, offset, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
+  if (error == -1)
+    err(EXIT_FAILURE, "fseek failed : error %d", errno);
 
   /* writing */
-  fwrite(&inject->phdr[inject->index_ptnote], 1, inject->ehdr->e_phentsize, fd_read); /* ATTENTION dois-je mettre le '.' pour '.nouveauNom ???  sur le fwrite */
-    if (ferror(fd_read) != 0) 
-      err(EXIT_FAILURE, "error when trying to rewrite the program header PT_NOTE to the elf binary %d", errno);
-
-  fclose(fd_read);
+  fwrite(&inject->phdr[inject->index_ptnote], 1, inject->ehdr->e_phentsize, inject->fd_read); /* ATTENTION dois-je mettre le '.' pour '.nouveauNom ???  sur le fwrite */
+  if (ferror(inject->fd_read) != 0) 
+    err(EXIT_FAILURE, "error when trying to rewrite the program header PT_NOTE to the elf binary %d", errno);
 }
 
-void overwrite_entry_point(struct arguments *arguments, struct inject_bin *inject) {
+/* overwrite the address of the executable header with the virtual address of the program header 'PT_NOTE' */
+void overwrite_entry_point(struct inject_bin *inject) {
   inject->ehdr->e_entry = inject->phdr[inject->index_ptnote].p_vaddr;
-
-  FILE *fd_read = fopen(arguments->read_elf, "r+");
-  if (fd_read == NULL) 
-    err(EXIT_FAILURE, "file descriptor failed : error %d", errno);
   
-  int error = fseek(fd_read, 0, SEEK_SET);
+  int error = fseek(inject->fd_read, 0, SEEK_SET);
     if (error == -1)
       err(EXIT_FAILURE, "fseek failed : error %d", errno);
 
-  fwrite(inject->ehdr, 1, sizeof(Elf64_Ehdr), fd_read);
-    if (ferror(fd_read) != 0) 
+  fwrite(inject->ehdr, 1, sizeof(Elf64_Ehdr), inject->fd_read);
+    if (ferror(inject->fd_read) != 0) 
       err(EXIT_FAILURE, "error when trying to rewrite the shstrtab section to the elf binary %d", errno);
-
-  fclose(fd_read);
-
-  /* rajouter le retour au code assembleur vers l'ancien e_entry */
 } 
 
 void hijack(struct arguments *arguments, struct inject_bin *inject) {
-  
+  Elf_Scn *scn = NULL;
+  Elf64_Shdr *shdr = NULL;
+  Elf64_Shdr *shdr_plt = NULL;
+  char *name = NULL;
+  size_t gotplt_index = 0;
+
+  /* task 7 got.plt finder */
+
+  while ((scn = elf_nextscn(inject->elf, scn)) != NULL) { //check the section name
+    if ((shdr = elf64_getshdr(scn)) == NULL) 
+      err(EXIT_FAILURE, "failed to get section header");   
+
+    name = elf_strptr(inject->elf, inject->index_shstrtab, shdr->sh_name); //get the name with the index of the abi tag
+    if (name == NULL)
+      err(EXIT_FAILURE, "failed to get name");
+
+    printf("name of section header %s \n", name);
+      
+    if (strcmp(name, ".got.plt") == 0) {//if same name i have the offset in the shstrtab
+      gotplt_index = elf_ndxscn(scn);
+      shdr_plt = shdr;
+
+    }
+  }
+  printf("\nindex of .got.plt %ld\n",gotplt_index );
+  if (shdr_plt != NULL) {
+    printf("\nplt->sh_addr %ld\n", shdr_plt->sh_addr);
+
+    int add_getenv_in_gotplt = 0x28; //because add is 28 in hexa 
+    
+    size_t offset = shdr_plt->sh_offset + add_getenv_in_gotplt;
+
+    int error = fseek(inject->fd_read, offset, SEEK_SET); // je sais pas quoi mettre à la place de 0L pour
+      if (error == -1)
+        err(EXIT_FAILURE, "fseek failed : error %d", errno);
+
+    /* writing */
+    fwrite(&arguments->address, 1, sizeof(unsigned long), inject->fd_read); /* ATTENTION dois-je mettre le '.' pour '.nouveauNom ???  sur le fwrite */
+      if (ferror(inject->fd_read) != 0) 
+        err(EXIT_FAILURE, "error when trying to rewrite the program header PT_NOTE to the elf binary %d", errno);
+  }
 }
 
 
@@ -445,6 +448,8 @@ int main(int argc, char **argv) {
   inject.index_ptnote = -1;
 
   /* task1 */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task1\n");
 	struct arguments arguments;
 	arguments.read_elf = NULL;
 	arguments.bin_elf = NULL;
@@ -456,7 +461,6 @@ int main(int argc, char **argv) {
 
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
   args_check(&arguments);
-
 
   /* open read_elf and check if he's readable*/
   int fd = open(arguments.read_elf, O_RDONLY, 0);
@@ -470,6 +474,8 @@ int main(int argc, char **argv) {
   printf("executable %d\n", inject.ehdr->e_ident[4]);
 
   /* Task 2 check the number of program headers that the binary contains */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task2\n");
   if (elf_getphdrnum(inject.elf, &inject.numb_pgheader) != 0)
     err(EXIT_FAILURE, "error getting the number of program header error : %s", elf_errmsg(elf_errno()));
   printf("number of program header %lu\n", inject.numb_pgheader);
@@ -494,36 +500,56 @@ int main(int argc, char **argv) {
   printf("index %d\n", inject.index_ptnote);
 
   /* Task 3 */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task3\n");
   printf("%s\n", arguments.bin_elf);
+
+
+  FILE *fd_read = fopen(arguments.read_elf, "r+");
+  if (fd_read == NULL) 
+    err(EXIT_FAILURE, "file descriptor failed : error %d", errno);
+
+  inject.fd_read = fd_read;
 
   /* inject the binary to the end of the elf file */
   inject_to_end(&arguments, &inject);
 
   /* TASK 4 */
   /* search the ABI tag and modify it */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task4\n");
   overwrite_section_header(&arguments, &inject);
 
   /* TASK 5 */
   /* function to set the name of the injected section */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task5\n");
   set_name_section(&arguments, &inject);
 
 
   /* TASK6  */
+  printf("\n\n-----------------------------------\n");
+  printf("Output task6\n");
   overwrite_program_header(&arguments, &inject);
 
-  printf("before rewrite %d\n", inject.ehdr->e_entry);
+  printf("before rewrite %ld\n", inject.ehdr->e_entry);
   /* TASK7 */
   printf(arguments.entry ? "true" : "false");
   if (arguments.entry) {
-    printf("entry point overwrite \n");
-    overwrite_entry_point(&arguments, &inject);
+    printf("\n\n-----------------------------------\n");
+    printf("Output task7 -- true entry point overwrite\n");
+    overwrite_entry_point(&inject);
   } else {
     //hijack got entries
+    printf("\n\n-----------------------------------\n");
+    printf("Output task7 -- false\n");
     hijack(&arguments, &inject);
   }
 
-  printf("after rewrite %d\n", inject.ehdr->e_entry);
+  printf("after rewrite %ld\n", inject.ehdr->e_entry);
 
+
+  fclose(fd_read);
   close(fd);
   elf_end(inject.elf);
 
