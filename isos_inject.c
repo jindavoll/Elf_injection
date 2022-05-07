@@ -155,13 +155,13 @@ void inject_to_end(struct arguments *arguments, struct inject_bin *inject) {
     err(EXIT_FAILURE, "file descriptor injected failed : error %d", errno);
 
   /* check elf size */
-  int error = fseek(fd_read, 0L, SEEK_END); //error a faire
+  int error = fseek(fd_read, 0L, SEEK_END);
   if (error == -1)
     err(EXIT_FAILURE, "fseek failed : error %d", errno);
   inject->elf_size = ftell(fd_read);
 
   /* check injected file size */
-  error = fseek(fd_injected, 0L, SEEK_END); // error a faire 
+  error = fseek(fd_injected, 0L, SEEK_END);
   if (error == -1)
     err(EXIT_FAILURE, "fseek failed : error %d", errno);
   inject->injected_size = ftell(fd_injected); //size of injected
@@ -214,7 +214,7 @@ void reorder(struct inject_bin *inject, Elf64_Shdr **tab) {
         tab[i - 1] = tmp;
       }
       if (tab[i]->sh_link != 0)
-          tab[i]->sh_link++; //j'augmente ou décrémente puisque index pointer différent...
+          tab[i]->sh_link++; //modify sh_link else we will have a few warnings
     } /* else right */
   } else if (index_shstrtab != 0 && index_off_abitag != 0 && tab[index_off_abitag + 1]->sh_addr < tab[index_off_abitag]->sh_addr){
     for (size_t i = index_off_abitag; i < index_shstrtab - 1; i++) {
