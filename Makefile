@@ -1,8 +1,10 @@
-CFLAGS = -Wall -Wextra -g -Warray-bounds -Wsequence-point -Walloc-zero -Wnull-dereference -Wpointer-arith -Wcast-qual -Wcast-align=strict #-O2 end of program
+CFLAGS = -Wall -Wextra -g -Warray-bounds -Wsequence-point -Walloc-zero -Wnull-dereference -Wpointer-arith -Wcast-qual -Wcast-align=strict -O2 #end of program
 CLANGFLAGS = -Wall -Wextra -Wuninitialized -Wpointer-arith -Wcast-qual -Wcast-align -fsyntax-only #error de linkage avec -lelf sur cette écriture
 
 all : copy isos_inject codeInjection clang backup
-
+#test and testEntry to run the program
+#warnings to test every warnings
+#clang-tidy to run with clang-tidy
 
 copy : 
 	rm date
@@ -25,6 +27,18 @@ analyze: isos_inject.c
 
 clang-tidy: isos_inject.c
 	clang-tidy isos_inject.c
+
+clangSanitizationAddress: isos_inject.c
+	clang -g -fsanitize=address isos_inject.c -lelf
+
+clangSanitizationMemory: isos_inject.c
+	clang -g -fsanitize=memory isos_inject.c -lelf
+
+clangSanitizationUndefined: isos_inject.c
+	clang -g -fsanitize=undefined isos_inject.c -lelf
+
+#check all the warnings without clang-tidy and without gcc but run test or testEntry to test gcc
+warnings: clangSanitizationUndefined clangSanitizationMemory clangSanitizationAddress analyze clang
 
 testEntry: isos_inject codeInjectionEntry #Test with modifying entry point
 	rm date

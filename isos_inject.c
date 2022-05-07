@@ -173,8 +173,8 @@ void inject_to_end(struct arguments *arguments, struct inject_bin *inject) {
 
   /* append the injected binary to the end of the elf file */
   char *buffer = malloc(sizeof(char) * inject->injected_size);
-  fread(buffer, 1, inject->injected_size, fd_injected);
-  if (ferror(fd_injected) != 0) /* -1 is an error */
+  size_t reading_bytes = fread(buffer, 1, inject->injected_size, fd_injected);
+  if (ferror(fd_injected) != 0 || reading_bytes == 0) /* -1 is an error */
     err(EXIT_FAILURE, "error when trying to read the injected binary %d", errno);
 
   /* append the injected code */
@@ -268,6 +268,7 @@ void overwrite_section_header(struct arguments *arguments, struct inject_bin *in
     tab[i] = NULL;
   int index = 0;
 
+  /* loop over all section and try to get the section which name is ".note.ABI-tag" */
   while ((scn = elf_nextscn(inject->elf, scn)) != NULL) { //check the section name
     if ((shdr = elf64_getshdr(scn)) == NULL) //get the sectionheader of referencing on the section name (index)
       err(EXIT_FAILURE, "failed to get section header");
@@ -304,7 +305,6 @@ void overwrite_section_header(struct arguments *arguments, struct inject_bin *in
       inject->shdr_shstrtab = shdr;            
     }
     /* add in tab the section TASK5 */
-    //tab[index] = elf64_getshdr(scn);
     tab[index] = shdr;
     index++;
   }
@@ -319,15 +319,12 @@ void set_name_section(struct arguments *arguments, struct inject_bin *inject) {
     err(EXIT_FAILURE, "error name parameter > size of section ABI-tag");
   }
 
-  size_t offset_in_shstrtab_abitag = 0;
-  size_t offset_shstrtab = 0;
-
   /* task 5 rewrite */
   if (inject->shdr == NULL)
     err(EXIT_FAILURE, "failed to get inject->shdr in set_name_section");
 
-  offset_in_shstrtab_abitag = inject->shdr->sh_name;
-  offset_shstrtab = inject->shdr_shstrtab->sh_offset;
+  size_t offset_in_shstrtab_abitag = inject->shdr->sh_name;
+  size_t offset_shstrtab = inject->shdr_shstrtab->sh_offset;
 
   /* check the offset of both section header */
   if (offset_shstrtab == 0 || offset_in_shstrtab_abitag == 0) {
@@ -358,7 +355,7 @@ void set_name_section(struct arguments *arguments, struct inject_bin *inject) {
 
 /* task6 */
 void overwrite_program_header(struct arguments *arguments, struct inject_bin *inject) {
-  inject->phdr[inject->index_ptnote].p_type = PT_LOAD; /* car le ptr c'est le tableau donc c'est un ptr d'element . */
+  inject->phdr[inject->index_ptnote].p_type = PT_LOAD;
   inject->phdr[inject->index_ptnote].p_offset = inject->elf_size;
   inject->phdr[inject->index_ptnote].p_vaddr = arguments->address;
   inject->phdr[inject->index_ptnote].p_paddr = arguments->address;
@@ -436,7 +433,7 @@ void hijack(struct arguments *arguments, struct inject_bin *inject) {
     /* writing */
     fwrite(&arguments->address, 1, sizeof(unsigned long), inject->fd_read); /* ATTENTION dois-je mettre le '.' pour '.nouveauNom ???  sur le fwrite */
       if (ferror(inject->fd_read) != 0) 
-        err(EXIT_FAILURE, "error when trying to rewrite the program header PT_NOTE to the elf binary %d", errno);
+        err(EXIT_FAILURE, "error when trying to rewrite the GOT entry in the .got.plt section %d", errno);
   }
 }
 
